@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Abulingo - Panel de Agente</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body class="bg-slate-900 text-white min-h-screen flex flex-col">
+
+    <nav class="bg-slate-800 p-4 border-b border-slate-700 flex justify-between items-center shadow-md">
+        <h1 class="text-xl font-bold text-blue-400">Abulingo <span class="text-gray-400 text-sm font-normal">| Panel Agente</span></h1>
+        <div class="flex items-center gap-4">
+            <span id="admin-name" class="text-sm text-gray-300"></span>
+            <button onclick="logout()" class="text-sm bg-red-900/50 hover:bg-red-900 text-red-200 px-3 py-1 rounded border border-red-800">Salir</button>
+        </div>
+    </nav>
+
+    <div class="flex-1 container mx-auto p-4 flex flex-col md:flex-row gap-4 h-[calc(100vh-80px)]">
+        
+        <div class="w-full md:w-1/4 space-y-4 flex flex-col">
+            
+            <div class="bg-slate-800 p-4 rounded-lg border border-slate-700">
+                <h3 class="font-bold text-green-400 mb-2"><i class="fas fa-link"></i> Tu Link Personal</h3>
+                <p class="text-xs text-gray-400 mb-2">Comparte este link para agregar amigos en TU cuenta.</p>
+                <div class="flex gap-2">
+                    <input type="text" id="share-link" readonly class="w-full bg-slate-900 text-xs text-gray-300 p-2 rounded border border-slate-600">
+                    <button onclick="copiarLink()" class="bg-blue-600 hover:bg-blue-500 text-white px-3 rounded"><i class="fas fa-copy"></i></button>
+                </div>
+            </div>
+
+            <div class="bg-slate-800 p-4 rounded-lg border border-slate-700 flex-1 flex flex-col">
+                <h3 class="font-bold text-purple-400 mb-2"><i class="fas fa-brain"></i> Personalidad IA</h3>
+                <p class="text-xs text-gray-400 mb-2">Define cómo quieres que la IA responda a TUS amigos.</p>
+                <textarea id="system-prompt" class="flex-1 w-full bg-slate-900 border border-slate-600 rounded p-2 text-sm focus:border-purple-500 outline-none resize-none" 
+                    placeholder="Ej: Eres un vendedor de seguros experto. Tus respuestas deben ser cortas y persuasivas..."></textarea>
+                <button onclick="guardarContexto()" class="mt-3 w-full bg-purple-600 hover:bg-purple-500 text-white py-2 rounded text-sm transition">Guardar Configuración</button>
+            </div>
+        </div>
+
+        <div class="w-full md:w-1/4 bg-slate-800 rounded-lg border border-slate-700 flex flex-col">
+            <div class="p-4 border-b border-slate-700 flex justify-between items-center bg-slate-750">
+                <h2 class="font-bold text-gray-200">Mis Friends</h2>
+                <button onclick="cargarLeads()" class="text-blue-400 hover:text-blue-300 text-sm"><i class="fas fa-sync-alt"></i></button>
+            </div>
+            <div id="leads-list" class="flex-1 overflow-y-auto p-2 space-y-2"></div>
+        </div>
+
+        <div class="w-full md:w-2/4 bg-slate-800 rounded-lg border border-slate-700 flex flex-col relative overflow-hidden" id="chat-panel">
+            <div class="p-4 bg-slate-900/50 border-b border-slate-700 flex justify-between items-center">
+                <h2 id="current-chat-title" class="font-bold text-blue-300">Selecciona un chat</h2>
+            </div>
+
+            <div id="messages-area" class="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-900/30">
+                <div class="h-full flex items-center justify-center flex-col text-gray-500 opacity-50">
+                    <i class="fas fa-comments text-4xl mb-2"></i>
+                    <p>Selecciona una conversación</p>
+                </div>
+            </div>
+
+            <div class="p-4 bg-slate-800 border-t border-slate-700 hidden" id="input-area">
+                <form id="chat-form" class="flex gap-2 items-center">
+                    <span class="text-xs text-blue-400 font-bold px-2 bg-blue-900/30 rounded border border-blue-800 py-1">AGENTE</span>
+                    <input type="text" id="agent-input" class="flex-1 bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 focus:border-blue-500 outline-none text-sm" placeholder="Intervenir..." autocomplete="off">
+                    <button type="submit" class="bg-blue-600 hover:bg-blue-500 text-white p-2 rounded-lg w-10 h-10 flex items-center justify-center transition">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const supabaseUrl = 'https://gpubjtiepeqlwkoxoogz.supabase.co'; 
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdwdWJqdGllcGVxbHdrb3hvb2d6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY2MDk3NzUsImV4cCI6MjA4MjE4NTc3NX0.IwvZDMfx1f38DlDqFeF1IEsMYxbFCWKlEj98GJnadpU';
+        const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
+
+        let currentUserId = null;
+        let currentLeadId = null;
+
+        // --- INICIALIZACIÓN ---
+        const userSession = JSON.parse(localStorage.getItem('user_session'));
+        if (!userSession) {
+            window.location.href = 'index.html';
+        } else {
+            currentUserId = userSession.id;
+            document.getElementById('admin-name').textContent = userSession.nombre;
+            
+            // 1. Generar Link Personalizado
+            // Asume que link.html está en la misma carpeta
+            const baseUrl = window.location.href.replace('dashboard.html', 'link.html');
+            const personalLink = `${baseUrl}?ref=${currentUserId}`;
+            document.getElementById('share-link').value = personalLink;
+
+            // 2. Cargar Contexto Guardado
+            cargarContextoUsuario();
+
+            // 3. Cargar Leads
+            cargarLeads();
+        }
+
+        function copiarLink() {
+            const copyText = document.getElementById("share-link");
+            copyText.select();
+            document.execCommand("copy");
+            alert("Link copiado al portapapeles");
+        }
+
+        async function cargarContextoUsuario() {
+            const { data, error } = await supabaseClient
+                .from('usuarios')
+                .select('system_prompt')
+                .eq('id', currentUserId)
+                .single();
+            
+            if(data) {
+                document.getElementById('system-prompt').value = data.system_prompt || '';
+            }
+        }
+
+        async function guardarContexto() {
+            const prompt = document.getElementById('system-prompt').value;
+            const btn = document.querySelector('button[onclick="guardarContexto()"]');
+            btn.textContent = "Guardando...";
+            
+            const { error } = await supabaseClient
+                .from('usuarios')
+                .update({ system_prompt: prompt })
+                .eq('id', currentUserId);
+
+            if(!error) {
+                alert("Configuración guardada. Tus próximos clientes interactuarán con esta personalidad.");
+            } else {
+                alert("Error al guardar.");
+            }
+            btn.textContent = "Guardar Configuración";
+        }
+
+        async function cargarLeads() {
+            const listContainer = document.getElementById('leads-list');
+            listContainer.innerHTML = '<p class="text-center text-xs text-gray-500 mt-2">Cargando...</p>';
+
+            // FILTRO IMPORTANTE: .eq('agent_id', currentUserId)
+            const { data: leads, error } = await supabaseClient
+                .from('leads')
+                .select('*')
+                .eq('agent_id', currentUserId) 
+                .order('created_at', { ascending: false });
+
+            listContainer.innerHTML = '';
+            
+            if (!leads || leads.length === 0) {
+                listContainer.innerHTML = '<p class="text-gray-500 text-sm text-center mt-4">No tienes leads aún. Comparte tu link.</p>';
+                return;
+            }
+
+            leads.forEach(lead => {
+                const div = document.createElement('div');
+                const isActive = currentLeadId === lead.id ? 'bg-blue-900/40 border-blue-500' : 'bg-slate-700/50 border-slate-600 hover:bg-slate-700';
+                div.className = `p-3 rounded cursor-pointer border transition flex justify-between items-center ${isActive}`;
+                div.onclick = () => seleccionarLead(lead);
+                div.innerHTML = `
+                    <div>
+                        <div class="font-bold text-sm text-gray-200"><i class="fab fa-whatsapp text-green-400 mr-1"></i> ${lead.whatsapp}</div>
+                        <div class="text-xs text-gray-500">${new Date(lead.created_at).toLocaleDateString()}</div>
+                    </div>
+                `;
+                listContainer.appendChild(div);
+            });
+        }
+
+        function seleccionarLead(lead) {
+            currentLeadId = lead.id;
+            document.getElementById('current-chat-title').textContent = `Chat con: ${lead.whatsapp}`;
+            document.getElementById('input-area').classList.remove('hidden');
+            cargarLeads(); // Refrescar estilos
+            cargarMensajes(lead.id);
+        }
+
+        async function cargarMensajes(leadId) {
+            const area = document.getElementById('messages-area');
+            const { data: mensajes } = await supabaseClient
+                .from('mensajes_leads')
+                .select('*')
+                .eq('lead_id', leadId)
+                .order('created_at', { ascending: true });
+
+            area.innerHTML = '';
+            mensajes.forEach(msg => renderizarBurbuja(msg.origen, msg.contenido));
+            area.scrollTop = area.scrollHeight;
+        }
+
+        function renderizarBurbuja(origen, texto) {
+            const area = document.getElementById('messages-area');
+            const div = document.createElement('div');
+            let align = 'justify-start';
+            let bg = 'bg-slate-700';
+            let label = '';
+
+            if (origen === 'cliente') {
+                align = 'justify-start';
+                bg = 'bg-slate-700 text-white rounded-tl-none border border-slate-600';
+                label = '<span class="text-xs text-green-400 font-bold block mb-1">Cliente</span>';
+            } else if (origen === 'ai') {
+                align = 'justify-start';
+                bg = 'bg-slate-600/50 text-gray-200 border border-slate-500 italic';
+                label = '<span class="text-xs text-blue-300 font-bold block mb-1">Tu IA</span>';
+            } else if (origen === 'agente') {
+                align = 'justify-end';
+                bg = 'bg-blue-600 text-white rounded-br-none shadow-lg';
+            }
+
+            div.className = `flex ${align} mb-2`;
+            div.innerHTML = `<div class="max-w-[80%] rounded-2xl px-4 py-2 ${bg}">${label}<div class="whitespace-pre-wrap text-sm">${texto}</div></div>`;
+            area.appendChild(div);
+        }
+
+        document.getElementById('chat-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const input = document.getElementById('agent-input');
+            const texto = input.value.trim();
+            if (!texto || !currentLeadId) return;
+
+            renderizarBurbuja('agente', texto);
+            input.value = '';
+            
+            await supabaseClient.from('mensajes_leads').insert([
+                { lead_id: currentLeadId, origen: 'agente', contenido: texto }
+            ]);
+        });
+
+        function logout() {
+            localStorage.removeItem('user_session');
+            window.location.href = 'index.html';
+        }
+    </script>
+</body>
+</html>

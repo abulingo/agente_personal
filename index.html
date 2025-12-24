@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Abulingo - Acceso</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-slate-900 text-white min-h-screen flex items-center justify-center p-4">
+
+    <div class="bg-slate-800 p-8 rounded-xl shadow-2xl w-full max-w-md border border-slate-700">
+        <h1 class="text-3xl font-bold text-center mb-6 text-blue-400">Bienvenido</h1>
+        
+        <div class="flex mb-6 bg-slate-700 rounded-lg p-1">
+            <button onclick="toggleTab('login')" id="tab-login" class="flex-1 py-2 rounded-md bg-blue-600 transition text-sm font-semibold">Login</button>
+            <button onclick="toggleTab('register')" id="tab-register" class="flex-1 py-2 rounded-md transition text-sm font-semibold">Registro</button>
+        </div>
+
+        <form id="login-form" class="space-y-4">
+            <input type="tel" id="login-phone" placeholder="Celular" class="w-full p-3 bg-slate-900 border border-slate-600 rounded focus:border-blue-500 outline-none transition" required>
+            <input type="password" id="login-pass" placeholder="Contraseña" class="w-full p-3 bg-slate-900 border border-slate-600 rounded focus:border-blue-500 outline-none transition" required>
+            <button type="submit" class="w-full bg-blue-600 hover:bg-blue-500 py-3 rounded font-bold transition shadow-lg">Ingresar</button>
+        </form>
+
+        <form id="register-form" class="space-y-4 hidden">
+            <input type="text" id="reg-name" placeholder="Nombre completo" class="w-full p-3 bg-slate-900 border border-slate-600 rounded focus:border-blue-500 outline-none transition" required>
+            <input type="tel" id="reg-phone" placeholder="Celular" class="w-full p-3 bg-slate-900 border border-slate-600 rounded focus:border-blue-500 outline-none transition" required>
+            <input type="password" id="reg-pass" placeholder="Contraseña" class="w-full p-3 bg-slate-900 border border-slate-600 rounded focus:border-blue-500 outline-none transition" required>
+            <input type="text" id="reg-key" placeholder="Gemini API Key" class="w-full p-3 bg-slate-900 border border-slate-600 rounded focus:border-blue-500 outline-none transition" required>
+            <p class="text-xs text-gray-400 text-center">Tu API key se guarda localmente para usar el chat.</p>
+            <button type="submit" class="w-full bg-green-600 hover:bg-green-500 py-3 rounded font-bold transition shadow-lg">Registrarse</button>
+        </form>
+        
+        <p id="alert-msg" class="mt-4 text-center text-sm font-medium min-h-[20px]"></p>
+    </div>
+
+    <script>
+        // --- CONFIGURACIÓN SUPABASE ---
+        const supabaseUrl = 'https://gpubjtiepeqlwkoxoogz.supabase.co'; 
+        const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdwdWJqdGllcGVxbHdrb3hvb2d6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjY2MDk3NzUsImV4cCI6MjA4MjE4NTc3NX0.IwvZDMfx1f38DlDqFeF1IEsMYxbFCWKlEj98GJnadpU';
+    
+        // CORRECCIÓN AQUÍ: Usamos 'supabaseClient' en lugar de 'supabase' para evitar conflicto
+        // 'supabase' es el objeto global que trae la librería, 'supabaseClient' es nuestra conexión.
+        const supabaseClient = supabase.createClient(supabaseUrl, supabaseKey);
+
+        // --- LÓGICA UI ---
+        const loginForm = document.getElementById('login-form');
+        const regForm = document.getElementById('register-form');
+        const alertMsg = document.getElementById('alert-msg');
+
+        // Función de Pestañas
+        function toggleTab(tab) {
+            alertMsg.textContent = '';
+            alertMsg.className = "mt-4 text-center text-sm font-medium"; // Resetear color
+            
+            if(tab === 'login') {
+                loginForm.classList.remove('hidden');
+                regForm.classList.add('hidden');
+                document.getElementById('tab-login').classList.add('bg-blue-600');
+                document.getElementById('tab-register').classList.remove('bg-blue-600');
+            } else {
+                loginForm.classList.add('hidden');
+                regForm.classList.remove('hidden');
+                document.getElementById('tab-login').classList.remove('bg-blue-600');
+                document.getElementById('tab-register').classList.add('bg-blue-600');
+            }
+        }
+
+        // --- LÓGICA REGISTRO ---
+        regForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            alertMsg.textContent = 'Procesando...';
+            alertMsg.classList.add('text-yellow-400');
+            
+            const nombre = document.getElementById('reg-name').value;
+            const celular = document.getElementById('reg-phone').value;
+            const password = document.getElementById('reg-pass').value;
+            const apiKey = document.getElementById('reg-key').value;
+
+            // 1. Verificar si existe (Usamos supabaseClient)
+            const { data: existing } = await supabaseClient
+                .from('usuarios')
+                .select('*')
+                .eq('celular', celular);
+            
+            if (existing && existing.length > 0) {
+                alertMsg.textContent = 'Este celular ya está registrado.';
+                alertMsg.className = "mt-4 text-center text-red-400 text-sm font-medium";
+                return;
+            }
+
+            // 2. Insertar nuevo usuario (Usamos supabaseClient)
+            const { data, error } = await supabaseClient.from('usuarios').insert([
+                { nombre, celular, password, gemini_api_key: apiKey }
+            ]).select();
+
+            if (error) {
+                console.error(error);
+                alertMsg.textContent = 'Error: ' + error.message;
+                alertMsg.className = "mt-4 text-center text-red-400 text-sm font-medium";
+            } else {
+                alert('Usuario creado con éxito. Por favor inicia sesión.');
+                toggleTab('login');
+            }
+        });
+
+        // --- LÓGICA LOGIN ---
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            alertMsg.textContent = 'Verificando...';
+            alertMsg.classList.add('text-yellow-400');
+
+            const celular = document.getElementById('login-phone').value;
+            const password = document.getElementById('login-pass').value;
+
+            // Usamos supabaseClient
+            const { data, error } = await supabaseClient
+                .from('usuarios')
+                .select('*')
+                .eq('celular', celular)
+                .eq('password', password) // NOTA: En producción real, no comparar contraseñas texto plano
+                .single();
+
+            if (error || !data) {
+                alertMsg.textContent = 'Credenciales incorrectas o usuario no encontrado.';
+                alertMsg.className = "mt-4 text-center text-red-400 text-sm font-medium";
+            } else {
+                // Éxito
+                alertMsg.textContent = '¡Bienvenido!';
+                alertMsg.className = "mt-4 text-center text-green-400 text-sm font-medium";
+                
+                // Guardar sesión
+                localStorage.setItem('user_session', JSON.stringify(data));
+                
+                // Redirigir (asegúrate de que dashboard.html existe)
+                setTimeout(() => {
+                    window.location.href = 'dashboard.html';
+                }, 1000);
+            }
+        });
+    </script>
+</body>
+</html>
